@@ -1,0 +1,171 @@
+---
+title: "pagerank"
+author: "type your name"
+date: "2018/4/21"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1.notice that the value of $p_{ij}$ depends on the value of $r_i$, i.e.,
+
+\begin{equation}
+\left\{
+\begin{aligned}
+p_{ij} &= \frac{1}{n}, &if \ r_i = 0  \\
+p_{ij} &= \frac{a_{ij}p}{r_i} + \frac{1-p}{n}, &if \ r_i > 0\\
+\end{aligned}
+\right.
+\end{equation}
+
+so if we write this to the matrix form, we need to use an indicator variable $I(r_i > 0)$, which denotes
+
+\begin{equation}
+I(r_i > 0) = 
+\left\{
+\begin{aligned}
+&0, &if \ r_i = 0\\
+&1, &if \ r_i > 0\\
+\end{aligned}
+\right.
+\end{equation}
+
+in this case we can write the transition matrix $P$ as
+
+\begin{equation}
+P = RA + q1_n^T
+\end{equation}
+
+where $R$ is a diagonal matrix, with it's $(i,j)$-element is
+
+\begin{equation}
+R_{ij} = 
+\left\{
+\begin{aligned}
+& \frac{p}{r_i}I(r_i > 0), &if \ i = j \\
+&0, &if \ i \not= j \\
+\end{aligned}
+\right.
+\end{equation}
+
+and $q$ is a vector, with it's $i$-element is
+
+\begin{equation}
+q_i = \frac{(1-pI(r_i > 0))}{n}
+\end{equation}
+
+2.based on the derivation of 1, we can calculate the objects by the following codes.
+
+```{r}
+# load package
+library(Matrix)
+# set directory
+setwd('/Users/lemuria/Bill/PageRank/')
+# load data
+web <- read.table('websites.txt',sep = '\t')
+head(web)
+A <- as.matrix(read.table("adjacency.txt",sep = ','))
+A[1:10,1:10]
+p <- 0.9
+n <- nrow(A)
+# (a)
+r <- rowSums(A)
+# (b)
+R_diag <- ifelse(r > 0, p/r, 0)
+print(head(R_diag,10))
+# (c)
+q <- (1 - p * as.numeric(r > 0))/n
+print(head(q,10))
+# (d)
+A_sp <- Matrix(A,sparse = TRUE)
+image(A_sp)
+```
+
+
+3.we can generate a inital eigenvector value x randomly and keep updating $P_{T}x$ until convergence, we use the value of max distance beween the $P_{T}$ and $P_{T+1}$ as the convergence judgment basis.
+
+```{r}
+# use power method to calculate eigenvector x
+P <- diag(R_diag) %*% A_sp + q %*% t(rep(1,n))
+
+# generated initial value randomly
+x <- runif(n,0,1)
+x <- x/sum(x)
+
+y <- t(P) %*% x
+thresold <- 1e-5
+
+while (TRUE) {
+  y1 <- t(P) %*% y
+  e <- max(abs(y1-y)) 
+  # print(e)
+  if(e < thresold){
+    break  
+  }        # if e is smaller enough, stop the loop
+  y <- y1
+}
+x1 <- as.vector(y1[,1])
+print(head(x1,20))  # print the first 20 elements of eigenvector
+```
+
+4. use the eigen function to calculate the eigenvector with the eigenvalue equals 1.
+
+```{r}
+# use eigen function to calculate the top eigenvector directly
+x <- Re(eigen(t(P))$vectors[,1])
+x <- x/sum(x)
+x2 <- x
+print(head(x2,20))
+```
+
+5.if can be seen that
+
+\begin{equation}
+x = p_{T}x = (RA + a1_n^T)^Tx
+\end{equation}
+
+which can be shown to be equivalent to
+
+\begin{equation}
+(A^TR^T - I_n)x = -(q^Tx)1_n.
+\end{equation}
+
+since we need to scale x for comparison, in this case, we have 
+
+\begin{equation*}
+\sum_{i=1}^Nx_i = 1
+\end{equation*}
+
+so we can infer that
+
+\begin{equation}
+(A^TR^T - I_n)x = -1_nq^Tx = -1_nq^T(1_n1_n^T)x = -1_nq^T1_n(1_n^Tx) = -1_nq^T1_n 
+\end{equation}
+
+so if we solve the equation above, we can ignore the scalar above.
+
+```{r}
+a <- t(A) %*% t(diag(R_diag)) - diag(1,n)
+b <- -rep(1,n) %*% t(q) %*% rep(1,n)
+x <- base::solve(a,b)
+x <- x/sum(x)
+x3 <- x[,1]
+print(head(x3,20))
+```
+
+6.the first method is an approximation method of the true value, while  we can calculate the theoretical value by the second and third method.
+
+```{r}
+top25 <- web[order(x2,decreasing = TRUE),][1:25]
+print(top25)
+```
+
+If there are 4 billions of websites, it means that we have to build a $4 
+\cdot 10^{10} \times 4 \cdot 10^{10}$ transfer matrix, such a large matrix obviously has too much memory on the single machine to allocate memory, using the precise methods becomes difficult, we can use approximate methods(the iterative power method), except for the construction of the sparse matrix, we may also need a distributed offline algorithm to increase space and time capacity to find the sorted eigenvector efficiency.
+
+
