@@ -1,0 +1,134 @@
+---
+title: "solution"
+author: "name"
+date: "2018/4/28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Accodding to the help document of Highway1 data in R, the data comes from a unpublished master's paper by Carl Hoffstedt. They relate the automobile accident rate, in accidents per million vehicle miles to several potential terms. The data include 39 sections of large highways in the state of Minnesota in 1973. The goal of this analysis was to understand the impact of design variables, **Acpts**, **Slim**, **Sig**, and **Shld** that are under the control of the highway department, on accidents. Before beginning our analysis, we need to do log transfrom to some of the variables.
+
+```{r}
+# options(warn = -1)
+# load package
+library(carData)
+library(dplyr)
+library(leaps)
+
+# response
+# rate
+#
+# variables which is interested in
+#
+# acpt
+# slim
+# sigs1
+# shld 
+
+# log transform of some variables and response of Highway1 data set 
+logTrans <- c('acpt','slim','sigs1','shld','rate')
+# log tran  sform
+Highway1[,logTrans] <- log(Highway1[,logTrans])
+
+# structure of Highway1 data set
+str(Highway1)
+```
+
+the scatter plot matrix suggests some correlation between the covariates and response, both the positive and negative relationships.
+
+```{r}
+plot(Highway1)
+```
+
+In paticular, we draw a plot including four scatterplots of rate and the four variables saparately. From overall view, there seem be a positive correlation between rate and acpt,sigs1, and a negative correlation between rate and slim,shld.
+
+```{r}
+# scatterplot of response and four interested variables
+par(mfrow = c(2,2))
+plot(rate ~ acpt, data = Highway1, pch = 15); grid()
+plot(rate ~ slim, data = Highway1, pch = 16); grid()
+plot(rate ~ sigs1, data = Highway1, pch = 17); grid()
+plot(rate ~ shld, data = Highway1, pch = 18); grid()
+```
+
+First we can do linear regression with each single variable saparately, and based on the significant results, we can pick len,trks,sigs1,slim,shld,acpt,htype seven variables, which have a p-value smaller than 0.05.
+
+```{r}
+# significance of single additional variable
+lapply(colnames(Highway1)[-1], function(x){
+  summary(lm(as.formula(paste0('rate ~ ' , x)), data = Highway1))
+})
+```
+
+For convenience, consider the factor variable htype, we think the htype MA differs from other types significantly, so we add a new column htype1 to **Highway1** data. In this case, we pick len,trks,sigs1,slim,shld,acpt,htype1 for our models as initial state.
+
+```{r}
+plot(rate ~ htype, data = Highway1)
+Highway1$htype1 <- ifelse(Highway1$htype == 'MA','MA','NotMA')
+```
+
+To find a good model, we use best subsets regression by the package **leaps** in R, and to compare different models, we split the data into training set and testing set randomly. we use BIC criterion to choose the top three models and use the mean square error (MSE) to compare the three models further.
+
+```{r}
+set.seed(888)  # for reproducible results
+n <- nrow(Highway1)
+p <- 0.7
+train <- sample(n,round(0.7*n)) # generate index to split data
+
+hwTrain <- Highway1[train,]  # trainning set
+hwTest <- Highway1[-train,]  # testing set
+
+fit <- lm(rate ~ len + trks + sigs1 + slim + shld + acpt + htype1, data = hwTrain)
+coef(fit)
+
+pred <- predict(fit, newdata = hwTest)
+# mean square error (MSE)
+mean((pred - hwTest$rate)^2)
+```
+
+```{r}
+# Best subsets regression
+md <- regsubsets(rate ~ len + trks + sigs1 + slim + shld + acpt + htype1, data = hwTrain)
+out <- summary(md)
+out$cp
+# plot(md, scale = 'Cp')
+plot(md, scale = 'bic')
+```
+
+Based on the results of best subsets regression, we choose three models which have least BIC values.
+
+```{r}
+fit1 <- lm(rate ~ len + slim, data = hwTrain)
+# coef(fit1)
+fit2 <- lm(rate ~ len + sigs1 + acpt, data = hwTrain)
+# coef(fit2)
+fit3 <- lm(rate ~ len + sigs1 + slim + htype1, data = hwTrain)
+# coef(fit3)
+
+pred1 <- predict(fit1, newdata = hwTest)
+mean((pred1 - hwTest$rate)^2)
+
+pred2 <- predict(fit2, newdata = hwTest)
+mean((pred2 - hwTest$rate)^2)
+
+pred3 <- predict(fit3, newdata = hwTest)
+mean((pred3 - hwTest$rate)^2)
+
+```
+
+We choose the second model $rate = a_0 + a_1 len + a_2 sigs1 + a_3 acpt$, and given a significance level of 0.05, we can see that all the coefficients are significant. so the sigs1 and acpt might increse the rate and the len might decrease the rate based on the properties of positive and negative of the regression coefficients.
+
+```{r}
+finalmd <- lm(rate ~ len + sigs1 + acpt, data = Highway1)
+summary(finalmd)
+plot(finalmd)
+```
+
+
+
+
+
+
